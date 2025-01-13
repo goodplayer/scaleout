@@ -24,6 +24,9 @@ go.work.sum
 # env file
 .env
 
+# IDE related
+/.idea
+
 # test keys
 /bootstrap.key*
 /testgen.bat

@@ -2,7 +2,7 @@ module github.com/goodplayer/scaleout
 
 go 1.23.2
 
-require github.com/meidoworks/nekoq-component v0.11.0
+require github.com/meidoworks/nekoq-component v0.12.0
 
 require (
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
