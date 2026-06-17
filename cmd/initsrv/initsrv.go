@@ -4,118 +4,113 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/meidoworks/nekoq-component/configure/configclient"
-	"github.com/meidoworks/nekoq-component/configure/secret"
-	"github.com/meidoworks/nekoq-component/configure/secretapi"
-	"github.com/meidoworks/nekoq-component/configure/secretimpl"
+	"github.com/meidoworks/nekoq-component/configure/secret/api"
+	"github.com/meidoworks/nekoq-component/configure/secret/impl"
+	"github.com/meidoworks/nekoq-component/configure/secret/tools"
+	"github.com/meidoworks/nekoq-component/configure/secret/utils"
+	"github.com/pelletier/go-toml/v2"
 
 	"github.com/goodplayer/scaleout/consts"
 )
 
-var (
-	rootCaCommonName string
-	rootCaOrg        string
-	rootCaCountry    string
-	rootCaProvince   string
-	rootCaLocality   string
-	rootCaStreet     string
-	rootCaPostal     string
-	rootCaYears      int
-)
+type InitSrvConfig struct {
+	PostgresConnectionString string           `toml:"postgres-connection-string"`
+	RootCA                   CACertConfig     `toml:"root-ca"`
+	IntermediateCA           CACertConfig     `toml:"intermediate-ca"`
+	ClusterTLS               ClusterTLSConfig `toml:"cluster-tls"`
+}
+
+type CACertConfig struct {
+	CommonName string `toml:"common-name"`
+	Org        string `toml:"org"`
+	Country    string `toml:"country"`
+	Province   string `toml:"province"`
+	Locality   string `toml:"locality"`
+	Street     string `toml:"street"`
+	Postal     string `toml:"postal"`
+	Years      int    `toml:"years"`
+}
+
+type ClusterTLSConfig struct {
+	Org      string `toml:"org"`
+	Country  string `toml:"country"`
+	Province string `toml:"province"`
+	Locality string `toml:"locality"`
+	Street   string `toml:"street"`
+	Postal   string `toml:"postal"`
+	Years    int    `toml:"years"`
+	DNSNames string `toml:"dns-names"`
+}
 
 var (
-	intermediateCaCommonName string
-	intermediateCaOrg        string
-	intermediateCaCountry    string
-	intermediateCaProvince   string
-	intermediateCaLocality   string
-	intermediateCaStreet     string
-	intermediateCaPostal     string
-	intermediateCaYears      int
-)
-
-var (
-	clusterTlsCertOrg      string
-	clusterTlsCertCountry  string
-	clusterTlsCertProvince string
-	clusterTlsCertLocality string
-	clusterTlsCertStreet   string
-	clusterTlsCertPostal   string
-	clusterTlsCertYears    int
-	clusterTlsCertDnsNames string
+	configFilePath string
 )
 
 func init() {
-	flag.StringVar(&rootCaCommonName, "root-ca-common-name", "Test Root CA", "root CA common name")
-	flag.StringVar(&rootCaOrg, "root-ca-org", "Test Organization", "root CA organization")
-	flag.StringVar(&rootCaCountry, "root-ca-country", "CN", "root CA country")
-	flag.StringVar(&rootCaProvince, "root-ca-province", "Test Province", "root CA province")
-	flag.StringVar(&rootCaLocality, "root-ca-locality", "Test Locality", "root CA locality")
-	flag.StringVar(&rootCaStreet, "root-ca-street", "Test Street", "root CA street")
-	flag.StringVar(&rootCaPostal, "root-ca-postal", "Test Postal Code", "root CA postal")
-	flag.IntVar(&rootCaYears, "root-ca-years", 30, "root CA years")
-
-	flag.StringVar(&intermediateCaCommonName, "intermediate-ca-common-name", "Test Intermediate CA", "intermediate CA common name")
-	flag.StringVar(&intermediateCaOrg, "intermediate-ca-org", "Test Organization", "intermediate CA organization")
-	flag.StringVar(&intermediateCaCountry, "intermediate-ca-country", "CN", "intermediate CA country")
-	flag.StringVar(&intermediateCaProvince, "intermediate-ca-province", "Test Province", "intermediate CA province")
-	flag.StringVar(&intermediateCaLocality, "intermediate-ca-locality", "Test Locality", "intermediate CA locality")
-	flag.StringVar(&intermediateCaStreet, "intermediate-ca-street", "Test Street", "intermediate CA street")
-	flag.StringVar(&intermediateCaPostal, "intermediate-ca-postal", "Test Postal Code", "intermediate CA postal")
-	flag.IntVar(&intermediateCaYears, "intermediate-ca-years", 15, "intermediate CA years")
-
-	flag.StringVar(&clusterTlsCertOrg, "cluster-tls-org", "Test Organization", "cluster TLS organization")
-	flag.StringVar(&clusterTlsCertCountry, "cluster-tls-country", "CN", "cluster TLS country")
-	flag.StringVar(&clusterTlsCertProvince, "cluster-tls-province", "Test Province", "cluster TLS province")
-	flag.StringVar(&clusterTlsCertLocality, "cluster-tls-locality", "Test Locality", "cluster TLS locality")
-	flag.StringVar(&clusterTlsCertStreet, "cluster-tls-street", "Test Street", "cluster TLS street")
-	flag.StringVar(&clusterTlsCertPostal, "cluster-tls-postal", "Test Postal Code", "cluster TLS postal")
-	flag.IntVar(&clusterTlsCertYears, "cluster-tls-years", 10, "cluster TLS years")
-	flag.StringVar(&clusterTlsCertDnsNames, "cluster-tls-dns-names", "localhost,127.0.0.1", "cluster TLS dns names")
-
+	flag.StringVar(&configFilePath, "config", "init_template.toml", "config file path")
 	flag.Parse()
 }
 
 func main() {
-	cfgclient := configclient.NewEnvClient()
-	pgConnStr := getEnvString(cfgclient, "POSTGRES_CONNECTION_STRING")
+	fn := func() []byte {
+		f, err := os.Open(configFilePath)
+		if err != nil {
+			panic(err)
+		}
+		defer func(f *os.File) {
+			_ = f.Close()
+		}(f)
+		data, err := io.ReadAll(f)
+		if err != nil {
+			panic(err)
+		}
+		return data
+	}
+	cfg := new(InitSrvConfig)
+	err := toml.Unmarshal(fn(), cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	pgConnStr := cfg.PostgresConnectionString
 	checkNonEmptyString(pgConnStr)
 	fmt.Println("debug pgConnStr:", pgConnStr)
 
-	clusterDnsNames := strings.Split(clusterTlsCertDnsNames, ",")
+	clusterDnsNames := strings.Split(cfg.ClusterTLS.DNSNames, ",")
 	if len(clusterDnsNames) == 0 {
 		fmt.Println("cluster dns names is empty")
 		return
 	}
 
-	fmt.Println("Root CA Certificate Common Name:", rootCaCommonName)
-	fmt.Println("Root CA Organization:", rootCaOrg)
-	fmt.Println("Root CA Country:", rootCaCountry)
-	fmt.Println("Root CA Province:", rootCaProvince)
-	fmt.Println("Root CA Locality:", rootCaLocality)
-	fmt.Println("Root CA Street:", rootCaStreet)
-	fmt.Println("Root CA Postal Code:", rootCaPostal)
-	fmt.Println("Root CA Years:", rootCaYears)
-	fmt.Println("Intermediate CA Common Name:", intermediateCaCommonName)
-	fmt.Println("Intermediate CA Organization:", intermediateCaOrg)
-	fmt.Println("Intermediate CA Country:", intermediateCaCountry)
-	fmt.Println("Intermediate CA Province:", intermediateCaProvince)
-	fmt.Println("Intermediate CA Locality:", intermediateCaLocality)
-	fmt.Println("Intermediate CA Street:", intermediateCaStreet)
-	fmt.Println("Intermediate CA Postal Code:", intermediateCaPostal)
-	fmt.Println("Intermediate CA Years:", intermediateCaYears)
+	fmt.Println("Root CA Certificate Common Name:", cfg.RootCA.CommonName)
+	fmt.Println("Root CA Organization:", cfg.RootCA.Org)
+	fmt.Println("Root CA Country:", cfg.RootCA.Country)
+	fmt.Println("Root CA Province:", cfg.RootCA.Province)
+	fmt.Println("Root CA Locality:", cfg.RootCA.Locality)
+	fmt.Println("Root CA Street:", cfg.RootCA.Street)
+	fmt.Println("Root CA Postal Code:", cfg.RootCA.Postal)
+	fmt.Println("Root CA Years:", cfg.RootCA.Years)
+	fmt.Println("Intermediate CA Common Name:", cfg.IntermediateCA.CommonName)
+	fmt.Println("Intermediate CA Organization:", cfg.IntermediateCA.Org)
+	fmt.Println("Intermediate CA Country:", cfg.IntermediateCA.Country)
+	fmt.Println("Intermediate CA Province:", cfg.IntermediateCA.Province)
+	fmt.Println("Intermediate CA Locality:", cfg.IntermediateCA.Locality)
+	fmt.Println("Intermediate CA Street:", cfg.IntermediateCA.Street)
+	fmt.Println("Intermediate CA Postal Code:", cfg.IntermediateCA.Postal)
+	fmt.Println("Intermediate CA Years:", cfg.IntermediateCA.Years)
 	fmt.Println("Cluster TLS Certificate Common Name:", clusterDnsNames[0])
-	fmt.Println("Cluster TLS Organization:", clusterTlsCertOrg)
-	fmt.Println("Cluster TLS Country:", clusterTlsCertCountry)
-	fmt.Println("Cluster TLS Province:", clusterTlsCertProvince)
-	fmt.Println("Cluster TLS Locality:", clusterTlsCertLocality)
-	fmt.Println("Cluster TLS Street:", clusterTlsCertStreet)
-	fmt.Println("Cluster TLS Postal Code:", clusterTlsCertPostal)
-	fmt.Println("Cluster TLS Years:", clusterTlsCertYears)
+	fmt.Println("Cluster TLS Organization:", cfg.ClusterTLS.Org)
+	fmt.Println("Cluster TLS Country:", cfg.ClusterTLS.Country)
+	fmt.Println("Cluster TLS Province:", cfg.ClusterTLS.Province)
+	fmt.Println("Cluster TLS Locality:", cfg.ClusterTLS.Locality)
+	fmt.Println("Cluster TLS Street:", cfg.ClusterTLS.Street)
+	fmt.Println("Cluster TLS Postal Code:", cfg.ClusterTLS.Postal)
+	fmt.Println("Cluster TLS Years:", cfg.ClusterTLS.Years)
 	fmt.Println("Cluster TLS DNS Names:", clusterDnsNames)
 	fmt.Print("Confirm the information?(y/n)")
 	var inputChar string
@@ -128,13 +123,18 @@ func main() {
 		return
 	}
 
-	up, err := secret.NewLocalFileUnsealProvider(os.DirFS("."), map[int64]string{
-		1: "bootstrap.key",
+	up, err := impl.NewLocalFileUnsealProvider(os.DirFS("."), map[int64]struct {
+		KeyFilePath     string
+		KeyFilePassword string
+	}{
+		1: {
+			"bootstrap.key", "changeit",
+		},
 	})
 	if err != nil {
 		panic(err)
 	}
-	keyStorage, err := secretimpl.NewPostgresKeyStorage(pgConnStr)
+	keyStorage, err := impl.NewPostgresKeyStorage(pgConnStr)
 	if err != nil {
 		panic(err)
 	}
@@ -147,19 +147,19 @@ func main() {
 	fmt.Println("unseal success!")
 
 	// create keys for certs
-	l1KeySet, err := secretapi.DefaultKeyGen.GenerateVitalKeySet()
+	l1KeySet, err := api.DefaultKeyGen.GenerateVitalKeySet()
 	if err != nil {
 		panic(err)
 	}
-	l1pri, err := new(secretapi.PemTool).ParseECDSAPrivateKey(l1KeySet.ECDSA_P521)
+	l1pri, err := new(utils.PemTool).ParseECDSAPrivateKey(l1KeySet.ECDSA_P521)
 	if err != nil {
 		panic(err)
 	}
-	l2KeySet, err := secretapi.DefaultKeyGen.GenerateVitalKeySet()
+	l2KeySet, err := api.DefaultKeyGen.GenerateVitalKeySet()
 	if err != nil {
 		panic(err)
 	}
-	l2pri, err := new(secretapi.PemTool).ParseECDSAPrivateKey(l2KeySet.ECDSA_P521)
+	l2pri, err := new(utils.PemTool).ParseECDSAPrivateKey(l2KeySet.ECDSA_P521)
 	if err != nil {
 		panic(err)
 	}
@@ -193,24 +193,24 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	certTool := new(secretapi.CertTool)
+	certTool := new(utils.CertTool)
 	// root ca
-	rootCACert, err := certTool.CreateRootCACertificate((&secretapi.CACertReq{
+	rootCACert, err := certTool.CreateRootCACertificate((&utils.CACertReq{
 		SerialNumber:  rootCACertSnBig,
-		CommonName:    rootCaCommonName,
-		Organization:  rootCaOrg,
-		Country:       rootCaCountry,
-		Province:      rootCaProvince,
-		Locality:      rootCaLocality,
-		StreetAddress: rootCaStreet,
-		PostalCode:    rootCaPostal,
+		CommonName:    cfg.RootCA.CommonName,
+		Organization:  cfg.RootCA.Org,
+		Country:       cfg.RootCA.Country,
+		Province:      cfg.RootCA.Province,
+		Locality:      cfg.RootCA.Locality,
+		StreetAddress: cfg.RootCA.Street,
+		PostalCode:    cfg.RootCA.Postal,
 		StartTime:     time.Now(),
-	}).Duration(time.Duration(rootCaYears)*365*24*time.Hour), new(secretapi.CertKeyPair).FromPrivateKey(l1pri))
+	}).Duration(time.Duration(cfg.RootCA.Years)*365*24*time.Hour), new(utils.CertKeyPair).FromPrivateKey(l1pri))
 	if err != nil {
 		panic(err)
 	}
-	newRootCACertSn, err := keyStorage.SaveRootCA(consts.RootCACert, rootCACert, secretapi.CertKeyInfo{
-		CertKeyLevel: secretapi.CertKeyLevelLevel1Ecdsa,
+	newRootCACertSn, err := keyStorage.SaveRootCA(consts.RootCACert, rootCACert, api.CertKeyInfo{
+		CertKeyLevel: api.CertKeyLevelLevel1Ecdsa,
 		CertKeyId:    fmt.Sprint(l1KeyId),
 	})
 	if err != nil {
@@ -221,22 +221,22 @@ func main() {
 		panic(err)
 	}
 	// intermediate ca
-	intermediateCACert, err := certTool.CreateIntermediateCACertificate((&secretapi.CACertReq{
+	intermediateCACert, err := certTool.CreateIntermediateCACertificate((&utils.CACertReq{
 		SerialNumber:  intermediateCACertSnBig,
-		CommonName:    intermediateCaCommonName,
-		Organization:  intermediateCaOrg,
-		Country:       intermediateCaCountry,
-		Province:      intermediateCaProvince,
-		Locality:      intermediateCaLocality,
-		StreetAddress: intermediateCaStreet,
-		PostalCode:    intermediateCaPostal,
+		CommonName:    cfg.IntermediateCA.CommonName,
+		Organization:  cfg.IntermediateCA.Org,
+		Country:       cfg.IntermediateCA.Country,
+		Province:      cfg.IntermediateCA.Province,
+		Locality:      cfg.IntermediateCA.Locality,
+		StreetAddress: cfg.IntermediateCA.Street,
+		PostalCode:    cfg.IntermediateCA.Postal,
 		StartTime:     time.Now(),
-	}).Duration(time.Duration(intermediateCaYears)*365*24*time.Hour), rootCACert, new(secretapi.CertKeyPair).FromPrivateKey(l1pri), new(secretapi.CertKeyPair).FromPrivateKey(l2pri))
+	}).Duration(time.Duration(cfg.IntermediateCA.Years)*365*24*time.Hour), rootCACert, new(utils.CertKeyPair).FromPrivateKey(l1pri), new(utils.CertKeyPair).FromPrivateKey(l2pri))
 	if err != nil {
 		panic(err)
 	}
-	newIntermediateCACertSn, err := keyStorage.SaveIntermediateCA(consts.RootIntermediateCACert, newRootCACertSn, intermediateCACert, secretapi.CertKeyInfo{
-		CertKeyLevel: secretapi.CertKeyLevelLevel2Ecdsa,
+	newIntermediateCACertSn, err := keyStorage.SaveIntermediateCA(consts.RootIntermediateCACert, newRootCACertSn, intermediateCACert, api.CertKeyInfo{
+		CertKeyLevel: api.CertKeyLevelLevel2Ecdsa,
 		CertKeyId:    fmt.Sprint(l2KeyId),
 	})
 	if err != nil {
@@ -247,15 +247,15 @@ func main() {
 		panic(err)
 	}
 	// cluster tls cert
-	certKey, err := secretapi.DefaultKeyGen.ECDSA(secretapi.KeyECDSA384)
+	certKey, err := api.DefaultKeyGen.ECDSA(api.KeyECDSA384)
 	if err != nil {
 		panic(err)
 	}
-	certPriKey, err := new(secretapi.PemTool).ParseECDSAPrivateKey(certKey)
+	certPriKey, err := new(utils.PemTool).ParseECDSAPrivateKey(certKey)
 	if err != nil {
 		panic(err)
 	}
-	if err := keyStorage.StoreL2DataKey(consts.RootLevel1Key, consts.RootClusterTLSKey, secretapi.KeyECDSA384, certKey); err != nil {
+	if err := keyStorage.StoreL2DataKey(consts.RootLevel1Key, consts.RootClusterTLSKey, api.KeyECDSA384, certKey); err != nil {
 		panic(err)
 	}
 	certKeyId, _, _, err := keyStorage.FetchL2DataKey(consts.RootClusterTLSKey)
@@ -270,36 +270,36 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	certReq, err := certTool.CreateCertificateRequest(&secretapi.CertReq{
+	certReq, err := certTool.CreateCertificateRequest(&utils.CertReq{
 		CommonName:    clusterDnsNames[0],
-		Organization:  clusterTlsCertOrg,
-		Country:       clusterTlsCertCountry,
-		Province:      clusterTlsCertProvince,
-		Locality:      clusterTlsCertLocality,
-		StreetAddress: clusterTlsCertStreet,
-		PostalCode:    clusterTlsCertPostal,
+		Organization:  cfg.ClusterTLS.Org,
+		Country:       cfg.ClusterTLS.Country,
+		Province:      cfg.ClusterTLS.Province,
+		Locality:      cfg.ClusterTLS.Locality,
+		StreetAddress: cfg.ClusterTLS.Street,
+		PostalCode:    cfg.ClusterTLS.Postal,
 		DNSNames:      clusterDnsNames,
-	}, &secretapi.CertKeyPair{
+	}, &utils.CertKeyPair{
 		PrivateKey: certPriKey,
 		PublicKey:  certPriKey.Public(),
 	})
 	if err != nil {
 		panic(err)
 	}
-	clusterTLSCert, err := certTool.CreateCertificate(certReq, (&secretapi.CertMeta{
+	clusterTLSCert, err := certTool.CreateCertificate(certReq, (&utils.CertMeta{
 		SerialNumber: certSnBig,
 		StartTime:    time.Now(),
 		SignerCert:   intermediateCACert,
-		Signer: &secretapi.CertKeyPair{
+		Signer: &utils.CertKeyPair{
 			PrivateKey: l2pri,
 			PublicKey:  l2pri.Public(),
 		},
-	}).Duration(time.Duration(clusterTlsCertYears)*365*24*time.Hour))
+	}).Duration(time.Duration(cfg.ClusterTLS.Years)*365*24*time.Hour))
 	if err != nil {
 		panic(err)
 	}
-	newCertSn, err := keyStorage.SaveCert(consts.RootClusterTLSCert, intermediateCACertSn, clusterTLSCert, secretapi.CertKeyInfo{
-		CertKeyLevel: secretapi.CertKeyLevelLevel2Custom,
+	newCertSn, err := keyStorage.SaveCert(consts.RootClusterTLSCert, intermediateCACertSn, clusterTLSCert, api.CertKeyInfo{
+		CertKeyLevel: api.CertKeyLevelLevel2Custom,
 		CertKeyId:    fmt.Sprint(certKeyId),
 	})
 	if err != nil {
@@ -307,15 +307,15 @@ func main() {
 	}
 
 	// init jwt token key
-	tool := secretapi.NewLevel2CipherTool(keyStorage, secretapi.DefaultKeyGen, consts.RootLevel1Key)
+	tool := tools.NewLevel2CipherTool(keyStorage, api.DefaultKeyGen, consts.RootLevel1Key)
 	if err := tool.NewGeneral128BKey(consts.RootJwtTokenKey); err != nil {
 		panic(err)
 	}
 
 	var certs = struct {
-		RootCASn         secretapi.CertSerialNumber
-		IntermediateCASn secretapi.CertSerialNumber
-		CertSn           secretapi.CertSerialNumber
+		RootCASn         api.CertSerialNumber
+		IntermediateCASn api.CertSerialNumber
+		CertSn           api.CertSerialNumber
 		CertKeyId        int64
 	}{RootCASn: newRootCACertSn, IntermediateCASn: newIntermediateCACertSn, CertSn: newCertSn, CertKeyId: certKeyId}
 	fmt.Println("Created certificates:")
@@ -325,20 +325,20 @@ func main() {
 	fmt.Println("Cluster TLS Cert Signing Key Id:", certs.CertKeyId)
 
 	// write certs to files
-	if err := writeCertFileBySn("rootCa.crt", certs.RootCASn, keyStorage); err != nil {
+	if err := writeCertFileBySn("RootCa.crt", certs.RootCASn, keyStorage); err != nil {
 		panic(err)
 	}
-	if err := writeCertFileBySn("intermediateCa.crt", certs.IntermediateCASn, keyStorage); err != nil {
+	if err := writeCertFileBySn("IntermediateCa.crt", certs.IntermediateCASn, keyStorage); err != nil {
 		panic(err)
 	}
 }
 
-func writeCertFileBySn(name string, sn secretapi.CertSerialNumber, keyStorage *secretimpl.PostgresKeyStorage) error {
+func writeCertFileBySn(name string, sn api.CertSerialNumber, keyStorage *impl.PostgresKeyStorage) error {
 	cert, _, _, err := keyStorage.LoadCertById(sn)
 	if err != nil {
 		return err
 	}
-	data, err := new(secretapi.PemTool).EncodeCertificate(cert)
+	data, err := new(utils.PemTool).EncodeCertificate(cert)
 	if err != nil {
 		return err
 	}
@@ -357,14 +357,6 @@ func writeCertFileBySn(name string, sn secretapi.CertSerialNumber, keyStorage *s
 		return err
 	}
 	return nil
-}
-
-func getEnvString(c *configclient.EnvClient, key string) string {
-	val, err := c.GetString(key)
-	if err != nil {
-		panic(err)
-	}
-	return val
 }
 
 func checkNonEmptyString(str string) {

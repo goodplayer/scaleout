@@ -1,0 +1,31 @@
+postgres-connection-string = "postgres://admin:admin@10.11.0.5:5432/scaleout"
+
+[root-ca]
+common-name = "Test Root CA #1"
+org = "Test Organization"
+country = "CN"
+province = ""
+locality = ""
+street = ""
+postal = ""
+years = 30
+
+[intermediate-ca]
+common-name = "Test Intermediate CA #1"
+org = "Test Organization"
+country = "CN"
+province = ""
+locality = ""
+street = ""
+postal = ""
+years = 15
+
+[cluster-tls]
+org = "Test Organization"
+country = "CN"
+province = ""
+locality = ""
+street = ""
+postal = ""
+years = 10
+dns-names = "example.com,*.example.com"
