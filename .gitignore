@@ -18,8 +18,8 @@
 # vendor/
 
 # Go workspace file
-go.work.bak
-go.work.sum.bak
+/go.work*
+/go.work.sum*
 
 # env file
 .env
@@ -31,3 +31,4 @@ go.work.sum.bak
 /bootstrap.key*
 /testgen.bat
 /cmd/initsrv/init_template.toml
+/cmd/gentoken/gentoken.toml

@@ -81,4 +81,7 @@ Note2: T-1 is the original cluster that handles data source. T-2 is the cluster 
     * Import cert on RHEL/CentOS/Fedora
         * Step1: `sudo cp your-ca.crt /etc/pki/ca-trust/source/anchors/`
         * Step2: `sudo update-ca-trust extract`
-
+6. Generate admin token for HTTP operations
+    * Prepare gentoken.toml configure file according to the example file cmd/gentoken/gentoken.toml.example
+    * Run `go run cmd/gentoken/gentoken.go` to generate admin token
+    * DO KEEP THE TOKEN SECURITY. Because the token contains all high risk permissions.

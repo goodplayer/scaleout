@@ -26,8 +26,8 @@ github.com/jinzhu/inflection v1.0.0 h1:K317FqzuhWc8YvSVlFMCCUb36O/S9MCKRDI7QkRKD
 github.com/jinzhu/inflection v1.0.0/go.mod h1:h+uFLlag+Qp1Va5pdKtLDYj+kHp5pxUVkryuEj+Srlc=
 github.com/jinzhu/now v1.1.5 h1:/o9tlHleP7gOFmsnYNz3RGnqzefHA47wQpKrrdTIwXQ=
 github.com/jinzhu/now v1.1.5/go.mod h1:d3SSVoowX0Lcu0IBviAWJpolVfI5UJVZZ7cO71lE/z8=
-github.com/meidoworks/nekoq-component v0.15.0 h1:7i8DEOPSAYAbrgl5BxITsD9Swp/eXqn4OI98udzTPxU=
-github.com/meidoworks/nekoq-component v0.15.0/go.mod h1:Frb4gwe9JwiNxIfNmI/yAKDx+1DqmPJPZdt18lCrxCM=
+github.com/meidoworks/nekoq-component v0.15.1 h1:9f0b09ntN64TOk5J8oxQ8RaVP1jLgx2wBGKP9NB07y4=
+github.com/meidoworks/nekoq-component v0.15.1/go.mod h1:Frb4gwe9JwiNxIfNmI/yAKDx+1DqmPJPZdt18lCrxCM=
 github.com/pelletier/go-toml/v2 v2.4.0 h1:Mwu0mAkUKbittDs3/ADDWXqMmq3EOK2VHiuCkV00Row=
 github.com/pelletier/go-toml/v2 v2.4.0/go.mod h1:2gIqNv+qfxSVS7cM2xJQKtLSTLUE9V8t9Stt+h56mCY=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

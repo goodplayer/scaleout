@@ -1,0 +1,1 @@
+postgres-connection-string = "postgres://admin:admin@10.11.0.5:5432/scaleout"

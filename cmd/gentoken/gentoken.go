@@ -2,20 +2,55 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"os"
 
-	"github.com/meidoworks/nekoq-component/configure/configclient"
+	"github.com/meidoworks/nekoq-component/configure/permissions"
 	"github.com/meidoworks/nekoq-component/configure/secret/api"
 	"github.com/meidoworks/nekoq-component/configure/secret/impl"
 	"github.com/meidoworks/nekoq-component/configure/secret/tools"
+	"github.com/pelletier/go-toml/v2"
 
 	"github.com/goodplayer/scaleout/consts"
 )
 
+type GenTokenConfig struct {
+	PostgresConnectionString string `toml:"postgres-connection-string"`
+}
+
+var (
+	configFilePath string
+)
+
+func init() {
+	flag.StringVar(&configFilePath, "config", "gentoken.toml", "config file path")
+	flag.Parse()
+}
+
 func main() {
-	cfgclient := configclient.NewEnvClient()
-	pgConnStr := getEnvString(cfgclient, "POSTGRES_CONNECTION_STRING")
+	fn := func() []byte {
+		f, err := os.Open(configFilePath)
+		if err != nil {
+			panic(err)
+		}
+		defer func(f *os.File) {
+			_ = f.Close()
+		}(f)
+		data, err := io.ReadAll(f)
+		if err != nil {
+			panic(err)
+		}
+		return data
+	}
+	cfg := new(GenTokenConfig)
+	err := toml.Unmarshal(fn(), cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	pgConnStr := cfg.PostgresConnectionString
 	checkNonEmptyString(pgConnStr)
 	fmt.Println("debug pgConnStr:", pgConnStr)
 
@@ -42,22 +77,16 @@ func main() {
 	}
 	fmt.Println("unseal success!")
 
+	jwtTool := tools.NewJwtTool(keyStorage)
+	jwtData := api.JwtData{}
+	jwtTool.SetupPermissions(jwtData, tools.PermissionResourceList{}.
+		Add(permissions.SecretJwtAdmin, permissions.SecretCertAdmin, permissions.SecretKeyAdmin))
 	addon := tools.NewAddonTool(keyStorage)
-	token, err := addon.SignJwtToken(consts.RootJwtTokenKey, api.JwtAlgHS512, tools.JwtClaims{
-		"Hello": "World",
-	})
+	token, err := addon.SignJwtToken(consts.RootJwtTokenKey, api.JwtAlgHS512, tools.JwtClaims{}.FromJwtData(jwtData))
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println("token:", token)
-}
-
-func getEnvString(c *configclient.EnvClient, key string) string {
-	val, err := c.GetString(key)
-	if err != nil {
-		panic(err)
-	}
-	return val
 }
 
 func checkNonEmptyString(str string) {
