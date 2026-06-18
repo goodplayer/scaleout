@@ -55,43 +55,30 @@ Note2: T-1 is the original cluster that handles data source. T-2 is the cluster 
 
 ## Installation
 
-1. Initialize database
+1. Following the GettingStarted.md in nekoq-component, located in
+    * configure/secret/docs/GettingStarted.md
 2. Initialize root keys(e.g. using local unseal provider)
-    1. `go run github.com/meidoworks/nekoq-component/configure/secretcmd/initlocal/. > bootstrap.keyset`
+    * `go run github.com/meidoworks/nekoq-component/configure/secret/cmds/initlocal/. > bootstrap.key`
         1. Default unseal key naming(local unseal only): `bootstrap.key`
         2. Default unseal key id(local unseal only): `1`
-    2. `go run github.com/meidoworks/nekoq-component/configure/secretcmd/initlocal/. -input bootstrap.keyset -output bootstrap.key`
-3. Initialize certs for TLS 
-   * sample windows `.bat` script
-   * prepare the key in Step2 before run this script
-   * ```text
-     go build ./cmd/initsrv/.
-     set POSTGRES_CONNECTION_STRING=postgres://admin:admin@10.11.0.5:5432/scaleout
-     initsrv.exe ^
-     -root-ca-common-name "Test Root CA #1" ^
-     -root-ca-org "Test Organization" ^
-     -root-ca-country "CN" ^
-     -root-ca-province "" ^
-     -root-ca-locality "" ^
-     -root-ca-street "" ^
-     -root-ca-postal "" ^
-     -root-ca-years 30 ^
-     -intermediate-ca-common-name "Test Intermediate CA #1" ^
-     -intermediate-ca-org "Test Organization" ^
-     -intermediate-ca-country "CN" ^
-     -intermediate-ca-province "" ^
-     -intermediate-ca-locality "" ^
-     -intermediate-ca-street "" ^
-     -intermediate-ca-postal "" ^
-     -intermediate-ca-years 15 ^
-     -cluster-tls-org "Test Organization" ^
-     -cluster-tls-country "CN" ^
-     -cluster-tls-province "" ^
-     -cluster-tls-locality "" ^
-     -cluster-tls-street "" ^
-     -cluster-tls-postal "" ^
-     -cluster-tls-years 10 ^
-     -cluster-tls-dns-names "example.com,*.example.com"
-     del initsrv.exe
-     ```
+3. Initialize certs for CA and TLS
+    * Prepare init template according to the example file cmd/initsrv/init_template.toml.example
+    * run `go run cmd/initsrv/initsrv.go` to initialize
 4. Start service
+5. Obtain CA certs
+    * Run `curl http://127.0.0.1:4011/api/v1/secret/cert/download/root_ca/ROOT-CA-CERT` to get
+      CA certs
+    * Import cert on windows
+        * `certutil -addstore -f "Root" ca-cert.pem`
+        * or `Import-Certificate -FilePath "ca-cert.cer" -CertStoreLocation Cert:\LocalMachine\Root`
+        * `certutil -addstore -f "CA" intermediate-cert.pem`
+        * or `Import-Certificate -FilePath "ca-cert.cer" -CertStoreLocation Cert:\CurrentUser\Root`
+    * Import cert on macos
+        * `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ca.crt`
+    * Import cert on Debian/Ubuntu
+        * Step1: `sudo cp your-ca.crt /usr/local/share/ca-certificates/`
+        * Step2: `sudo update-ca-certificates`
+    * Import cert on RHEL/CentOS/Fedora
+        * Step1: `sudo cp your-ca.crt /etc/pki/ca-trust/source/anchors/`
+        * Step2: `sudo update-ca-trust extract`
+

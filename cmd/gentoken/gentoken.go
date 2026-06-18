@@ -6,9 +6,9 @@ import (
 	"os"
 
 	"github.com/meidoworks/nekoq-component/configure/configclient"
-	"github.com/meidoworks/nekoq-component/configure/secret"
-	"github.com/meidoworks/nekoq-component/configure/secretaddon"
-	"github.com/meidoworks/nekoq-component/configure/secretimpl"
+	"github.com/meidoworks/nekoq-component/configure/secret/api"
+	"github.com/meidoworks/nekoq-component/configure/secret/impl"
+	"github.com/meidoworks/nekoq-component/configure/secret/tools"
 
 	"github.com/goodplayer/scaleout/consts"
 )
@@ -19,13 +19,18 @@ func main() {
 	checkNonEmptyString(pgConnStr)
 	fmt.Println("debug pgConnStr:", pgConnStr)
 
-	up, err := secret.NewLocalFileUnsealProvider(os.DirFS("."), map[int64]string{
-		1: "bootstrap.key",
+	up, err := impl.NewLocalFileUnsealProvider(os.DirFS("."), map[int64]struct {
+		KeyFilePath     string
+		KeyFilePassword string
+	}{
+		1: {
+			"bootstrap.key", "changeit",
+		},
 	})
 	if err != nil {
 		panic(err)
 	}
-	keyStorage, err := secretimpl.NewPostgresKeyStorage(pgConnStr)
+	keyStorage, err := impl.NewPostgresKeyStorage(pgConnStr)
 	if err != nil {
 		panic(err)
 	}
@@ -37,8 +42,8 @@ func main() {
 	}
 	fmt.Println("unseal success!")
 
-	addon := secretaddon.NewAddonTool(keyStorage)
-	token, err := addon.SignJwtToken(consts.RootJwtTokenKey, secretaddon.JwtAlgHS512, secretaddon.JwtClaims{
+	addon := tools.NewAddonTool(keyStorage)
+	token, err := addon.SignJwtToken(consts.RootJwtTokenKey, api.JwtAlgHS512, tools.JwtClaims{
 		"Hello": "World",
 	})
 	if err != nil {
